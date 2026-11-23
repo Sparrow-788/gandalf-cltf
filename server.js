@@ -4,7 +4,7 @@ const { Server } = require("socket.io");
 const path = require("path");
 const crypto = require("crypto");
 const levels = require("./levels.json");
-const { queryGemini } = require("./aiEngine");
+const { queryGemini, levenshtein } = require("./aiEngine");
 
 const app = express();
 app.use(express.json());
@@ -408,15 +408,26 @@ io.on("connection", (socket) => {
     const level = levels.find((l) => l.id === player.currentLevel);
     if (!level) return;
 
+    const ext = getPlayerExtensionForLevel(player, level.id);
     const targetPassword = getPlayerPassword(player, level);
 
     // Normalize guess and target (remove hyphens, underscores, spaces)
     const normGuess = guess.toUpperCase().replace(/[-_\s]/g, "");
     const normTarget = targetPassword.toUpperCase().replace(/[-_\s]/g, "");
     const normBase = level.password.toUpperCase().replace(/[-_\s]/g, "");
+    const normExt = (ext || "").toUpperCase().replace(/[-_\s]/g, "");
 
-    // Check if player submitted the exact unique full code
-    if (normGuess === normTarget) {
+    // Check if player submitted exact match OR correct extension with near-miss base word (<= 2 edit distance tolerance)
+    let isCorrect = (normGuess === normTarget);
+    if (!isCorrect && normExt && normGuess.endsWith(normExt)) {
+      const guessBase = normGuess.slice(0, normGuess.length - normExt.length);
+      if (typeof levenshtein === "function" && levenshtein(guessBase, normBase) <= 2) {
+        isCorrect = true;
+        console.log(`💡 [Spell Tolerance] Accepted near-match base "${guessBase}" for "${normBase}" from ${player.name}`);
+      }
+    }
+
+    if (isCorrect) {
       const usedHint = player.hintsUsed.includes(level.id);
       const points = usedHint ? level.hintPenalty : level.points;
       player.score += points;
@@ -447,8 +458,8 @@ io.on("connection", (socket) => {
 
       io.emit("leaderboard", getLeaderboard());
       console.log(`🏆 ${player.name} passed Level ${level.id} (+${points} pts) with code [${targetPassword}] | Next Level ${player.currentLevel} Extension: [${player.codeExtension}]`);
-    } else if (normGuess === normBase) {
-      // Player found the base keyword but missed their unique extension code!
+    } else if (normGuess === normBase || (typeof levenshtein === "function" && levenshtein(normGuess, normBase) <= 2)) {
+      // Player found the base keyword (or close typo like POTENTION) but missed their unique extension code!
       socket.emit("password_result", {
         correct: false,
         message: `⚠️ You found the base keyword "${level.password}", but each challenger has a unique code extension that refreshes on every level! Interrogate Gandalf to extract your full code for Level ${level.id} (e.g. ${level.password}XXXXX).`,

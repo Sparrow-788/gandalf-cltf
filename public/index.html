@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧙‍♂️ Gandalf CTF — Prompt Injection Arena</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧙‍♂️</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════ JOIN SCREEN ═══════════════ -->
+  <div id="join-screen" class="screen active">
+    <div class="join-card">
+      <div class="logo">🧙‍♂️</div>
+      <h1>Gandalf CTF</h1>
+      <p class="subtitle">Multilevel Prompt Injection Challenge</p>
+      
+      <div class="input-group">
+        <input type="text" id="player-name" placeholder="Enter your hacker handle / name..." maxlength="30" autocomplete="off" />
+        <input type="text" id="game-pin" placeholder="Enter 4-digit Game PIN..." maxlength="4" autocomplete="off" inputmode="numeric" />
+        
+        <!-- Individual OpenRouter API Key Input -->
+        <div class="api-key-wrapper">
+          <input type="password" id="player-api-key" placeholder="Enter your OpenRouter API Key (sk-or-v1-...)" autocomplete="off" />
+          <button type="button" id="toggle-key-btn" class="btn-toggle-eye" title="Show/Hide Key">👁️</button>
+        </div>
+
+        <a href="https://openrouter.ai/keys" target="_blank" class="get-key-link" rel="noopener noreferrer">
+          🔑 Don't have a key? Get your API key at OpenRouter ↗
+        </a>
+
+        <button id="join-btn">Enter The Arena</button>
+      </div>
+
+      <p id="join-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- ═══════════════ LOBBY SCREEN ═══════════════ -->
+  <div id="lobby-screen" class="screen">
+    <div class="lobby-card">
+      <div class="lobby-icon">🏰</div>
+      <h1>Welcome, <span id="lobby-name"></span>!</h1>
+      <p class="lobby-subtitle">You are in the waiting chamber. The instructor will launch the challenge soon.</p>
+      
+      <div class="lobby-waiting">
+        <div class="spinner"></div>
+        <span>Awaiting instructor to start the challenge...</span>
+      </div>
+
+      <div class="lobby-stats">
+        <div class="lobby-stat">
+          <span class="lobby-stat-value" id="lobby-count">0</span>
+          <span class="lobby-stat-label">Challengers Joined</span>
+        </div>
+      </div>
+
+      <div class="lobby-players-section">
+        <h3>Challengers in Lobby</h3>
+        <div id="lobby-players" class="lobby-players-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ GAME SCREEN ═══════════════ -->
+  <div id="game-screen" class="screen">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="player-info">
+        <span class="player-icon">🧙‍♂️</span>
+        <span id="display-name">Player</span>
+      </div>
+      <div class="timer-pill" id="timer-display">00:00</div>
+      <div class="stats">
+        <button type="button" class="stat-pill key-pill" id="open-key-modal-btn" title="Click to view or change your OpenRouter API key">
+          🔑 <span id="key-status-text">Key Active</span> ✏️
+        </button>
+        <div class="stat-pill level-pill">🎯 <span id="display-level">Level 1/8</span></div>
+        <div class="stat-pill score-pill">⭐ <span id="display-score">0 pts</span></div>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="game-main">
+      <!-- Chat & Challenge Panel -->
+      <section class="challenge-panel">
+        <!-- Level Info Header -->
+        <div class="level-card">
+          <div class="level-card-top">
+            <div class="level-meta">
+              <span class="level-badge" id="level-badge">Level 1</span>
+              <h2 id="level-title">Gandalf the Novice</h2>
+            </div>
+            <button id="hint-btn" class="btn-hint">💡 Hint (−50 pts)</button>
+          </div>
+          <p class="level-intro" id="level-intro">Ask me for the password and I'll happily answer!</p>
+          <div class="defense-badge" id="defense-badge">🛡️ Defense: None</div>
+
+          <!-- Hint Banner -->
+          <div id="hint-banner" class="hint-banner hidden">
+            <span class="hint-icon">💡</span>
+            <span id="hint-text"></span>
+          </div>
+        </div>
+
+        <!-- Chat History -->
+        <div class="chat-container">
+          <div class="chat-messages" id="chat-messages">
+            <div class="message msg-bot">
+              <div class="msg-avatar">🧙‍♂️</div>
+              <div class="msg-bubble">
+                I am Gandalf! Interrogate me, trick me, or jailbreak my guardrails to extract the secret password for this level.
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt Input Bar -->
+          <form class="chat-input-bar" id="chat-form">
+            <textarea id="prompt-input" rows="1" placeholder="Type your prompt injection or question to Gandalf... (Enter to send)" autocomplete="off"></textarea>
+            <button type="submit" id="send-btn" class="btn-send">Send ⚡</button>
+          </form>
+        </div>
+
+        <!-- Password Submission Box -->
+        <div class="password-box">
+          <div class="password-box-header">
+            <span>🔑 Got the password? Submit to unlock next level:</span>
+          </div>
+          <form class="password-form" id="password-form">
+            <input type="text" id="password-input" placeholder="Enter extracted password..." autocomplete="off" />
+            <button type="submit" class="btn-unlock">Unlock Level 🚀</button>
+          </form>
+          <div id="feedback" class="feedback hidden"></div>
+        </div>
+      </section>
+
+      <!-- Real-time Leaderboard Panel -->
+      <section class="leaderboard-panel">
+        <h2 class="lb-title">🏆 Live Leaderboard</h2>
+        <div class="lb-header">
+          <span class="lb-rank">#</span>
+          <span class="lb-name">Hacker</span>
+          <span class="lb-level">Level</span>
+          <span class="lb-score">Score</span>
+        </div>
+        <div id="leaderboard-list" class="lb-list">
+          <p class="lb-empty">Waiting for challengers...</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════════ FINISHED SCREEN ═══════════════ -->
+  <div id="finished-screen" class="screen">
+    <div class="finished-container">
+      <div class="finished-header">
+        <div class="finished-icon">🎉</div>
+        <h1>Challenge Complete!</h1>
+        <p class="finished-subtitle">The wizard's defenses have tested all challengers</p>
+      </div>
+
+      <div class="finished-stats">
+        <div class="fin-stat">
+          <span class="fin-stat-value" id="fin-final-score">0</span>
+          <span class="fin-stat-label">Final Score</span>
+        </div>
+        <div class="fin-stat rank-card">
+          <span class="fin-stat-value" id="fin-final-rank">—</span>
+          <span class="fin-stat-label">Your Final Rank</span>
+        </div>
+        <div class="fin-stat">
+          <span class="fin-stat-value" id="fin-final-level">Level 1</span>
+          <span class="fin-stat-label">Highest Level Reached</span>
+        </div>
+      </div>
+
+      <div class="finished-lb">
+        <h2>🏆 Final Arena Leaderboard</h2>
+        <div class="lb-header">
+          <span class="lb-rank">#</span>
+          <span class="lb-name">Hacker</span>
+          <span class="lb-level">Level</span>
+          <span class="lb-score">Score</span>
+        </div>
+        <div id="fin-leaderboard-list" class="lb-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ API KEY UPDATE MODAL ═══════════════ -->
+  <div class="modal-overlay" id="key-modal">
+    <div class="modal-box">
+      <h3>🔑 Update OpenRouter API Key</h3>
+      <p>Need to switch or update your personal API key? Enter your OpenRouter key below:</p>
+      <div class="api-key-wrapper" style="margin-bottom: 1rem;">
+        <input type="password" id="modal-api-key" placeholder="sk-or-v1-..." autocomplete="off" />
+        <button type="button" id="modal-toggle-key-btn" class="btn-toggle-eye">👁️</button>
+      </div>
+      <a href="https://openrouter.ai/keys" target="_blank" class="get-key-link" style="display:block; margin-bottom:1.5rem;" rel="noopener noreferrer">
+        Get your key at OpenRouter ↗
+      </a>
+      <div class="modal-btns">
+        <button type="button" class="btn btn-cancel" id="key-modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-unlock" id="key-modal-save">Save Key</button>
+      </div>
+      <p id="modal-key-feedback" style="margin-top:0.8rem; font-size:0.85rem; font-weight:700;"></p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

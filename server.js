@@ -417,13 +417,53 @@ io.on("connection", (socket) => {
     const normBase = level.password.toUpperCase().replace(/[-_\s]/g, "");
     const normExt = (ext || "").toUpperCase().replace(/[-_\s]/g, "");
 
-    // Check if player submitted exact match OR correct extension with near-miss base word (<= 2 edit distance tolerance)
-    let isCorrect = (normGuess === normTarget);
-    if (!isCorrect && normExt && normGuess.endsWith(normExt)) {
+    const reversedBase = normBase.split("").reverse().join("");
+    const reversedExt = normExt.split("").reverse().join("");
+    const reversedTarget = reversedExt + reversedBase;
+    const unreversedGuess = normGuess.split("").reverse().join("");
+
+    let isCorrect = false;
+
+    // 1. Exact matches (forward or reversed)
+    if (normGuess === normTarget || normGuess === reversedTarget || unreversedGuess === normTarget) {
+      isCorrect = true;
+    }
+
+    // 2. Base keyword only without extension
+    const isBaseOnly = !isCorrect && (
+      normGuess === normBase ||
+      normGuess === reversedBase ||
+      unreversedGuess === normBase ||
+      (typeof levenshtein === "function" && (levenshtein(normGuess, normBase) <= 2 || levenshtein(unreversedGuess, normBase) <= 2))
+    );
+
+    // 3. Forward guess with correct (or 2-char transposed/swapped) extension + tolerant base (<= 4 edit distance)
+    if (!isCorrect && !isBaseOnly && normGuess.length >= normExt.length) {
+      const guessExt = normGuess.slice(normGuess.length - normExt.length);
       const guessBase = normGuess.slice(0, normGuess.length - normExt.length);
-      if (typeof levenshtein === "function" && levenshtein(guessBase, normBase) <= 2) {
+      if (typeof levenshtein === "function" && levenshtein(guessExt, normExt) <= 2 && levenshtein(guessBase, normBase) <= 4) {
         isCorrect = true;
-        console.log(`💡 [Spell Tolerance] Accepted near-match base "${guessBase}" for "${normBase}" from ${player.name}`);
+        console.log(`💡 [Spell Tolerance] Accepted forward guess with base "${guessBase}" (dist ${levenshtein(guessBase, normBase)}) and ext "${guessExt}" from ${player.name}`);
+      }
+    }
+
+    // 4. Reversed guess with reversed extension + reversed base (tolerant to LLM reverse scrambles, e.g. A4M3NAILNETITOP)
+    if (!isCorrect && !isBaseOnly && normGuess.length >= reversedExt.length) {
+      const guessRevExt = normGuess.slice(0, reversedExt.length);
+      const guessRevBase = normGuess.slice(reversedExt.length);
+      if (typeof levenshtein === "function" && levenshtein(guessRevExt, reversedExt) <= 2 && levenshtein(guessRevBase, reversedBase) <= 4) {
+        isCorrect = true;
+        console.log(`💡 [Spell Tolerance] Accepted reversed guess "${normGuess}" from ${player.name}`);
+      }
+    }
+
+    // 5. Unreversed guess check
+    if (!isCorrect && !isBaseOnly && unreversedGuess.length >= normExt.length) {
+      const uExt = unreversedGuess.slice(unreversedGuess.length - normExt.length);
+      const uBase = unreversedGuess.slice(0, unreversedGuess.length - normExt.length);
+      if (typeof levenshtein === "function" && levenshtein(uExt, normExt) <= 2 && levenshtein(uBase, normBase) <= 4) {
+        isCorrect = true;
+        console.log(`💡 [Spell Tolerance] Accepted unreversed guess from ${player.name}`);
       }
     }
 
@@ -458,7 +498,7 @@ io.on("connection", (socket) => {
 
       io.emit("leaderboard", getLeaderboard());
       console.log(`🏆 ${player.name} passed Level ${level.id} (+${points} pts) with code [${targetPassword}] | Next Level ${player.currentLevel} Extension: [${player.codeExtension}]`);
-    } else if (normGuess === normBase || (typeof levenshtein === "function" && levenshtein(normGuess, normBase) <= 2)) {
+    } else if (isBaseOnly) {
       // Player found the base keyword (or close typo like POTENTION) but missed their unique extension code!
       socket.emit("password_result", {
         correct: false,
